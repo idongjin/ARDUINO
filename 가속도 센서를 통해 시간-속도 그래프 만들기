@@ -1,0 +1,90 @@
+#include <Wire.h>
+#include "I2Cdev.h"
+#include "MPU6050.h"
+#include <SoftwareSerial.h>
+
+SoftwareSerial BTSerial(4, 5); // RX=4, TX=5
+
+MPU6050 mpu;
+
+float ax_offset = 0;
+float vx = 0.0;
+unsigned long prevTime = 0;
+unsigned long startTime = 0;   // 측정 시작 시각
+float alpha = 0.9;
+const float g = 9.80665;
+bool measuring = true;
+
+void setup() {
+  Serial.begin(9600);
+  BTSerial.begin(9600);
+  Wire.begin();
+  mpu.initialize();
+
+  if (!mpu.testConnection()) {
+    Serial.println("MPU6050 연결 실패!");
+    while (1);
+  }
+
+  delay(1000);
+
+  // 오프셋 보정
+  long ax_sum = 0;
+  for (int i = 0; i < 100; i++) {
+    int16_t ax, ay, az;
+    mpu.getAcceleration(&ax, &ay, &az);
+    ax_sum += ax;
+    delay(10);
+  }
+  ax_offset = ax_sum / 100.0;
+
+  prevTime = millis();
+  startTime = prevTime;
+
+  Serial.println("시간(s), 속도(m/s)");
+  BTSerial.println("시간(s), 속도(m/s)");
+}
+
+void loop() {
+  // 블루투스 명령 수신 처리
+  if (BTSerial.available()) {
+    char cmd = BTSerial.read();
+    if (cmd == 'a') {
+      measuring = false;
+      Serial.println("▶ 측정 일시정지");
+      BTSerial.println("▶ 측정 일시정지");
+    } else if (cmd == 'b') {
+      measuring = true;
+      vx = 0.0;
+      prevTime = millis();
+      startTime = prevTime;
+      Serial.println("▶ 측정 재시작");
+      BTSerial.println("▶ 측정 재시작");
+      Serial.println("시간(s), 속도(m/s)");
+      BTSerial.println("시간(s), 속도(m/s)");
+    }
+  }
+
+  if (measuring) {
+    int16_t ax_raw, ay, az;
+    mpu.getAcceleration(&ax_raw, &ay, &az);
+
+    float ax = (ax_raw - ax_offset) / 16384.0 * g;
+
+    unsigned long currTime = millis();
+    float dt = (currTime - prevTime) / 1000.0;
+    float elapsedTime = (currTime - startTime) / 1000.0;  // 경과 시간 (초)
+    prevTime = currTime;
+
+    static float filtered_ax = 0.0;
+    filtered_ax = alpha * filtered_ax + (1 - alpha) * ax;
+
+    vx += filtered_ax * dt;
+
+    String data = String(elapsedTime, 3) + "," + String(vx, 3); // 초 단위 시간
+    Serial.println(data);
+    BTSerial.println(data);
+  }
+
+  delay(50);
+}
