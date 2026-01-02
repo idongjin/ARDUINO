@@ -1,0 +1,19 @@
+int potentiometer = A0;
+int led = 9;
+ 
+void setup() {
+  Serial.begin(9600);
+  pinMode(led, OUTPUT);
+}
+ 
+void loop() {
+  int pmValue = analogRead(potentiometer);
+ 
+  Serial.print("potentiometer = ");
+  Serial.println(pmValue);
+ 
+  pmValue = map(pmValue, 0, 1023, 0, 255);
+ 
+  analogWrite(led, pmValue);
+  delay(100);
+}
